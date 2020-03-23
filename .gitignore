@@ -1,0 +1,8 @@
+# IDE files
+.vscode
+
+# built distribution files
+*egg-info/
+
+# pycache
+*/__pycache__/*
