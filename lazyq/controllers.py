@@ -5,10 +5,11 @@ from tensorflow import keras
 from cvxopt.solvers import qp
 from cvxopt import matrix as cvxopt_matrix
 
-# TODO disentangle the environment from the controller better (floor_size)
+
 class DnnRegressor2DPlus1D():
     """
-    DNN regression model using 2D state input and 1D goal input
+    DNN regression model using 2D state input from
+    [-floor_size,floor_size]x[-floor_size,floor_size] and 1D goal input (angle)
     """
 
     def __init__(
@@ -29,7 +30,7 @@ class DnnRegressor2DPlus1D():
             1                # goal: intended direction y
         ]
 
-        if keras_model is not None:
+        if keras_model is None:
             self.model = self.build_model()
             self.target_model = self.build_model()
         else:
@@ -117,24 +118,26 @@ class Controller():
     def __init__(
             self,
             v_functions,
-            action_length,
             local_model_regularization,
             discount,
             k_nearest,
             boundaries,
             n_v_function_update_iterations,
+            environment,
+            scaleup_factor,
             # how many of the elements with too many neighbours should actually be thrown out
             prune_ratio=0.,
             init_length=3,
             scale_logger=False
     ):
         self.v_functions = v_functions
-        self.action_length = action_length
         self.local_model_regularization = local_model_regularization
         self.discount = discount
         self.k_nearest = k_nearest
         self.boundaries = boundaries
         self.n_v_function_update_iterations = n_v_function_update_iterations
+        self.environment = environment
+        self.scaleup_factor = scaleup_factor
         self.prune_ratio = prune_ratio
         self.init_length = init_length
         self.scale_logger = scale_logger
@@ -142,8 +145,6 @@ class Controller():
         self.mean_kept = []
         if self.scale_logger:
             self.scales = []
-
-        self.third_root_of_2 = 2.0**(1/3)
 
         # Initialize raw data
         angles = 2*np.pi*np.random.rand(self.init_length*self.k_nearest+1)
@@ -155,8 +156,7 @@ class Controller():
             for _ in range(len(self.v_functions))
         ]
         self.states_all = [
-            v_function.floor_size * 2 *
-            (np.random.rand(self.init_length*self.k_nearest+1, 2)-0.5)
+            np.random.rand(self.init_length*self.k_nearest+1, 2)
             for v_function in range(len(self.v_functions))
         ]
         self.actions_all = [
@@ -234,7 +234,7 @@ class Controller():
 
         alphabeta = np.array(sol['x']).reshape(-1)
 
-        return self.action_length/np.linalg.norm(alphabeta[1:]) * alphabeta[1:]
+        return self.environment.action_length/np.linalg.norm(alphabeta[1:]) * alphabeta[1:]
 
     def get_lazy_model_value(
             self,
@@ -275,13 +275,13 @@ class Controller():
         # Instability countermeasure: The target cant be higher than the maximum
         # r_plus_gamma_V_next in the vicinity
         return min([
-            alphabeta[0] + self.action_length * np.linalg.norm(alphabeta[1:]),
+            alphabeta[0] + self.environment.action_length * np.linalg.norm(alphabeta[1:]),
             np.max(r_plus_gamma_v_nexts)
         ])
 
     def append_new_data_point(
             self,
-            rollout_policy_ind,
+            rollout_policy_inds,
             goal,
             state,
             action,
@@ -291,98 +291,55 @@ class Controller():
         """
         Add new data point to the value functions
         """
-        for train_signal in range(len(self.v_functions)):
-            if not train_signal == rollout_policy_ind:
-                # Append raw data ONLY
-                self.goals_all[train_signal] = np.append(
-                    self.goals_all[train_signal],
-                    goal.reshape((1, 2)),
-                    axis=0
-                )
-                self.states_all[train_signal] = np.append(
-                    self.states_all[train_signal],
-                    state.reshape((1, 2)),
-                    axis=0
-                )
-                self.actions_all[train_signal] = np.append(
-                    self.actions_all[train_signal],
-                    action.reshape((1, 2)),
-                    axis=0
-                )
-                self.rewards_all[train_signal] = np.append(
-                    self.rewards_all[train_signal],
-                    np.array([reward]),
-                    axis=0
-                )
-                self.next_states_all[train_signal] = np.append(
-                    self.next_states_all[train_signal],
-                    next_state.reshape((1, 2)),
-                    axis=0
-                )
+        for train_signal in rollout_policy_inds:
+            # Append raw data ONLY
+            self.goals_all[train_signal] = np.append(
+                self.goals_all[train_signal],
+                goal.reshape((1, len(goal))),
+                axis=0
+            )
+            self.states_all[train_signal] = np.append(
+                self.states_all[train_signal],
+                state.reshape((1, len(state))),
+                axis=0
+            )
+            self.actions_all[train_signal] = np.append(
+                self.actions_all[train_signal],
+                action.reshape((1, len(action))),
+                axis=0
+            )
+            self.rewards_all[train_signal] = np.append(
+                self.rewards_all[train_signal],
+                np.array([reward]),
+                axis=0
+            )
+            self.next_states_all[train_signal] = np.append(
+                self.next_states_all[train_signal],
+                next_state.reshape((1, len(next_state))),
+                axis=0
+            )
 
-                if not self.already_pruned[train_signal]:
-                    if len(self.states_all[train_signal]) > self.init_length*self.k_nearest + 3:
-                        # throw our placeholders from raw data
-                        print(
-                            'throw out initial placeholder raw data for no.', train_signal)
-                        self.goals_all[train_signal] = self.goals_all[train_signal][
-                            self.init_length*self.k_nearest + 2:
-                        ]
-                        self.states_all[train_signal] = self.states_all[train_signal][
-                            self.init_length*self.k_nearest + 2:
-                        ]
-                        self.actions_all[train_signal] = self.actions_all[train_signal][
-                            self.init_length*self.k_nearest + 2:
-                        ]
-                        self.rewards_all[train_signal] = self.rewards_all[train_signal][
-                            self.init_length*self.k_nearest + 2:
-                        ]
-                        self.next_states_all[train_signal] = self.next_states_all[train_signal][
-                            self.init_length*self.k_nearest + 2:
-                        ]
-                        self.already_pruned[train_signal] = True
-
-    def rapid_near_neighbours(
-            self,
-            rollout_policy_ind,
-            state,
-            goal,
-            scale
-    ):
-        """
-        This function does a rapneid pre-choice of possible near neighbours only by
-        putting constraints on single-coordinate differences on the 5 coordinates
-        state_x,state_y,goal_dir_x,goal_dir_y,goal_orientation.
-        This greatly reduces the number of pairs the actual distance has to be
-        calculated for.
-        """
-        # only consider samples who have a smaller difference than action_length
-        # in all of their state coordinates...
-        subset = np.where(
-            np.abs(
-                self.states_all[rollout_policy_ind][:, 0] - state[0]
-            ) < self.action_length * scale
-        )[0]
-        subset = subset[
-            np.abs(
-                self.states_all[rollout_policy_ind][subset, 1] - state[1]
-            ) < self.action_length * scale
-        ]
-
-        # ...and who have a smaller difference than 0.1
-        # in both of the goal direction coordinates
-        subset = subset[
-            np.abs(
-                self.goals_all[rollout_policy_ind][subset, 0] - goal[0]
-            ) < 0.1 * scale
-        ]
-        subset = subset[
-            np.abs(
-                self.goals_all[rollout_policy_ind][subset, 1] - goal[1]
-            ) < 0.1 * scale
-        ]
-
-        return subset
+            if not self.already_pruned[train_signal]:
+                if len(self.states_all[train_signal]) > self.init_length*self.k_nearest + 3:
+                    # throw our placeholders from raw data
+                    print(
+                        'throw out initial placeholder raw data for no.', train_signal)
+                    self.goals_all[train_signal] = self.goals_all[train_signal][
+                        self.init_length*self.k_nearest + 2:
+                    ]
+                    self.states_all[train_signal] = self.states_all[train_signal][
+                        self.init_length*self.k_nearest + 2:
+                    ]
+                    self.actions_all[train_signal] = self.actions_all[train_signal][
+                        self.init_length*self.k_nearest + 2:
+                    ]
+                    self.rewards_all[train_signal] = self.rewards_all[train_signal][
+                        self.init_length*self.k_nearest + 2:
+                    ]
+                    self.next_states_all[train_signal] = self.next_states_all[train_signal][
+                        self.init_length*self.k_nearest + 2:
+                    ]
+                    self.already_pruned[train_signal] = True
 
     def rapid_near_neighbours_scale_up(
             self,
@@ -395,8 +352,9 @@ class Controller():
         """
         scale = 1
         for _ in range(20):
-            neighbours = self.rapid_near_neighbours(
-                rollout_policy_ind,
+            neighbours = self.environment.find_near_neighbours(
+                self.states_all[rollout_policy_ind],
+                self.goals_all[rollout_policy_ind],
                 state,
                 goal,
                 scale
@@ -418,14 +376,7 @@ class Controller():
                     scale
                 ]
             # else: scale up and repeat
-            # since the data is distributed on a 3D-manifold
-            # (it is represented in 4D, but 2D goal direction
-            # is only on a 1D manifold), scaling up with 2^(1/4)
-            # roughly doubles the amount of points within the
-            # boundaries. 2^10 is circa 1000, so I should be able to
-            # increase the expected number of points by up to 1000
-            # before an exception is raised
-            scale = scale*self.third_root_of_2
+            scale = scale*self.scaleup_factor
         # Raise exception if not enough found
         raise Exception(
             'Not enough near neighbours found after scaling to ' + str(scale))
@@ -484,17 +435,10 @@ class Controller():
         ])
 
         # data augmentation: set targets to 0 outside of the interesting domain
-        # for some weird reason, the table's size is floor_size/sqrt(2)
-        self.targets_all[train_signal][
-            np.any(
-                np.abs(self.states_all[
-                    train_signal
-                ]) > self.v_functions[
-                    train_signal
-                ].floor_size/np.sqrt(2),
-                axis=-1
-            )
-        ] = 0
+        self.environment.get_augmented_targets(
+            self.states_all[train_signal],
+            self.targets_all[train_signal]
+        )
 
         # The rollout ends once a reward is given. Thus, the value of the value function is
         # the reward itself whereever rewards are given
