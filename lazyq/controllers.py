@@ -3,7 +3,7 @@ Definition of the controller class for Q learning with
 lazy action model.
 """
 import pickle
-from os import path
+from os import path, mkdir
 import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -110,7 +110,7 @@ class DnnRegressor2DPlus1D():
         Predict instances of the value function
         """
         # predict using the target model
-        return np.array(self.target_model([x_data]))
+        return np.array(self.target_model.predict(x_data))
 
 
 class Controller():
@@ -607,7 +607,7 @@ class Controller():
         """
         # make sure not to overwrite anything
         assert not path.exists(folder_name)
-
+        mkdir(folder_name)
         # save v functions
         for ind, v_function in enumerate(self.v_functions):
             v_function.target_model.save_weights(folder_name + '/v_function_' + str(ind) + '.hd5')
