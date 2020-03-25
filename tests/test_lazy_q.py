@@ -8,16 +8,16 @@ MY_ENV = ryenv.DiskEnv()
 
 # %%
 FLOOR_SIZE = 1
-ORIENTATION_MAX = np.pi/8
 TARGET_UPDATE_INTERVAL = 2
+N_EPOCHS = 10
 NUM_BOOTSTRAPS = 6
 
 # %%
 V_FUNCTIONS = [
     lazyq.controllers.DnnRegressor2DPlus1D(
         FLOOR_SIZE,
-        ORIENTATION_MAX,
-        TARGET_UPDATE_INTERVAL
+        TARGET_UPDATE_INTERVAL,
+        N_EPOCHS
     )
     for _ in range(NUM_BOOTSTRAPS)
 ]

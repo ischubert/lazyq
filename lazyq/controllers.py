@@ -1,3 +1,9 @@
+"""
+Definition of the controller class for Q learning with
+lazy action model.
+"""
+import pickle
+from os import path
 import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,13 +21,13 @@ class DnnRegressor2DPlus1D():
     def __init__(
             self,
             floor_size,
-            orientation_max,
             target_update_interval,
+            n_epochs,
             keras_model=None
     ):
         self.floor_size = floor_size
-        self.orientation_max = orientation_max
         self.target_update_interval = target_update_interval
+        self.n_epochs = n_epochs
 
         self.norm_factors = [
             1/floor_size,    # state: x-position
@@ -87,7 +93,7 @@ class DnnRegressor2DPlus1D():
         """
         # fit the model
         self.fit_counter += 1
-        self.model.fit(x_data, y_data, verbose=verbose, epochs=5)
+        self.model.fit(x_data, y_data, verbose=verbose, epochs=self.n_epochs)
 
         # and possibly update the target_model
         if self.fit_counter % self.target_update_interval == 1:
@@ -468,8 +474,6 @@ class Controller():
                 train_signal
             ) + '.png')
 
-        plt.show()
-
     def update_r_plus_gamma_v(self, train_signal):
         """Update the V values of all data points. These are only
         dependent on the weights of the target model"""
@@ -596,3 +600,68 @@ class Controller():
         print('Prune data set')
         self.prune(train_signal, keep_in)
         print('Kept', self.mean_kept[-1], 'of original data')
+
+    def save(self, folder_name):
+        """
+        Save the controller object
+        """
+        # make sure not to overwrite anything
+        assert not path.exists(folder_name)
+
+        # save v functions
+        for ind, v_function in enumerate(self.v_functions):
+            v_function.target_model.save_weights(folder_name + '/v_function_' + str(ind) + '.hd5')
+
+        # save the controller's collected data
+        data = {
+            'goals_all': self.goals_all,
+            'states_all': self.states_all,
+            'actions_all': self.actions_all,
+            'rewards_all': self.rewards_all,
+            'next_states_all': self.next_states_all
+        }
+        with open(folder_name + '/data.pickle', 'wb') as file:
+            pickle.dump(data, file)
+
+    def load(self, folder_name, light=False):
+        """
+        Load the controller object
+        """
+
+        # make sure data exists
+        if isinstance(folder_name, str):
+            assert path.exists(folder_name)
+            v_func_paths = [folder_name + '/v_function_' + str(
+                ind
+                ) + '.hd5' for ind in range(len(self.v_functions))]
+            data_dirs = folder_name + '/data.pickle'
+            data_inds = range(len(self.v_functions))
+        else:
+            for name in folder_name:
+                assert path.exists(name)
+            v_func_paths = [name + '/v_function_' + str(
+                0
+                ) + '.hd5' for name in folder_name]
+            data_dirs = [name + '/data.pickle' for name in folder_name]
+            data_inds = [0 for name in folder_name]
+
+        # load V functions
+        for v_function, v_func_path in zip(self.v_functions, v_func_paths):
+            v_function.target_model.load_weights(v_func_path)
+
+        # load the controller's collected data. Not efficient, but this is
+        # not significant usually
+        for ind, [data_dir, data_ind] in enumerate(zip(data_dirs, data_inds)):
+            with open(data_dir, 'rb') as file:
+                data = pickle.load(file)
+                self.goals_all[ind] = data['goals_all'][data_ind]
+                self.states_all[ind] = data['states_all'][data_ind]
+                self.actions_all[ind] = data['actions_all'][data_ind]
+                self.rewards_all[ind] = data['rewards_all'][data_ind]
+                self.next_states_all[ind] = data['next_states_all'][data_ind]
+
+        if not light:
+            for train_signal in tqdm.tqdm(range(len(self.v_functions))):
+                self.update_k_smallest_inds_and_calculate_pruning(train_signal)
+                self.update_r_plus_gamma_v(train_signal)
+                self.update_targets_only(train_signal)
