@@ -467,6 +467,8 @@ class Controller():
         _ = plt.hist(self.targets_all[train_signal], bins=100, log=True)
 
         if self.record_plots:
+            if not path.exists(self.scratch_dir + '/plots/'):
+                mkdir(self.scratch_dir + '/plots/')
             plt.savefig(self.scratch_dir + '/plots/' + str(
                 time.time()
             ) + '.png')
