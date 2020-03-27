@@ -460,7 +460,7 @@ class Controller():
 
     def get_action(self, state, goal):
         """Get averaged action from all policies"""
-        return np.mean(
+        average = np.mean(
             np.stack(
                 [
                     self.get_individual_action(pol_ind, state, goal)
@@ -470,6 +470,8 @@ class Controller():
             ),
             axis=0
         )
+
+        return self.environment.action_length*average/np.linalg.norm(average)
 
     def update_targets_only(
             self,
