@@ -3,6 +3,7 @@ Definition of the controller class for Q learning with
 lazy action model.
 """
 import pickle
+import time
 from os import path, mkdir
 import tqdm
 import numpy as np
@@ -96,7 +97,7 @@ class DnnRegressor2DPlus1D():
         self.model.fit(x_data, y_data, verbose=verbose, epochs=self.n_epochs)
 
         # and possibly update the target_model
-        if self.fit_counter % self.target_update_interval == 1:
+        if self.fit_counter % self.target_update_interval == 0:
             self.target_model.set_weights(
                 self.model.get_weights()
             )
@@ -134,6 +135,8 @@ class Controller():
             # how many of the elements with too many neighbours should actually be thrown out
             prune_ratio=0.,
             init_length=3,
+            scratch_dir=None,
+            record_plots=False,
             scale_logger=False
     ):
         self.v_functions = v_functions
@@ -146,6 +149,8 @@ class Controller():
         self.scaleup_factor = scaleup_factor
         self.prune_ratio = prune_ratio
         self.init_length = init_length
+        self.scratch_dir = scratch_dir
+        self.record_plots = record_plots
         self.scale_logger = scale_logger
 
         self.mean_kept = []
@@ -420,11 +425,7 @@ class Controller():
 
     def update_targets_only(
             self,
-            train_signal,
-            record_plots=False,
-            scratch_dir=None,
-            counter=None,
-            iteration=None
+            train_signal
     ):
         """
         Update all targets. This function assumes
@@ -465,13 +466,9 @@ class Controller():
 
         _ = plt.hist(self.targets_all[train_signal], bins=100, log=True)
 
-        if record_plots:
-            plt.savefig(scratch_dir + '/plots/targets_counter_' + str(
-                counter
-            ) + '_iteration_' + str(
-                iteration
-            ) + '_index_' + str(
-                train_signal
+        if self.record_plots:
+            plt.savefig(self.scratch_dir + '/plots/' + str(
+                time.time()
             ) + '.png')
 
     def update_r_plus_gamma_v(self, train_signal):
@@ -548,7 +545,7 @@ class Controller():
             len(self.next_states_all[train_signal])
         )
 
-    def update(self, train_signal, record_plots=False, counter=None):
+    def update(self, train_signal):
         """This function is supposed to be a full from-scratch
         extraction of a value function from a static data set"""
         print('TRAIN_SIGNAL NO.', train_signal)
@@ -574,7 +571,7 @@ class Controller():
         print('Self-consistent V-function iterations...')
         # Start loop with initializing
         target_weights_updated = True
-        for iteration in tqdm.tqdm(range(self.n_v_function_update_iterations)):
+        for _ in tqdm.tqdm(range(self.n_v_function_update_iterations)):
             if target_weights_updated:
                 # If the weights of the target network have been updated,
                 # self.r_plus_gamma_v_all has to be updated as well.
@@ -585,8 +582,7 @@ class Controller():
                 # self.targets_all has to be updated as well
                 print('Update targets_all')
                 self.update_targets_only(
-                    train_signal,
-                    record_plots=record_plots, counter=counter, iteration=iteration
+                    train_signal
                 )
 
             # Fit network on X and Y
