@@ -113,6 +113,53 @@ class DnnRegressor2DPlus1D():
         # predict using the target model
         return np.array(self.target_model.predict(x_data))
 
+    def visualize(self, goal, state_grid):
+        """utility function to plot the V function no. 'index' under goal 'goal'"""
+        plt.imshow(
+            self.predict(
+                np.concatenate(
+                    (
+                        state_grid,
+                        np.repeat(
+                            goal.reshape((1, 2)),
+                            len(state_grid),
+                            axis=0
+                        ),
+                    ),
+                    axis=-1
+                )
+            ).reshape(int(np.sqrt(len(state_grid))), int(np.sqrt(len(state_grid))))[:, ::-1].T
+        )
+        plt.colorbar()
+        plt.xticks(
+            np.linspace(
+                0,
+                int(np.sqrt(len(state_grid))),
+                3
+            ).astype(int),
+            np.linspace(
+                min(state_grid[:, 0]),
+                max(state_grid[:, 0]),
+                3
+            )
+        )
+        plt.yticks(
+            np.linspace(
+                0,
+                int(np.sqrt(len(state_grid))),
+                3
+            ).astype(int)[::-1],
+            np.linspace(
+                min(state_grid[:, 1]),
+                max(state_grid[:, 1]),
+                3
+            )
+        )
+        plt.xlabel('x1')
+        plt.ylabel('x2')
+
+        plt.show()
+
 
 class Controller():
     """
@@ -286,7 +333,8 @@ class Controller():
         # Instability countermeasure: The target cant be higher than the maximum
         # r_plus_gamma_V_next in the vicinity
         return min([
-            alphabeta[0] + self.environment.action_length * np.linalg.norm(alphabeta[1:]),
+            alphabeta[0] + self.environment.action_length *
+            np.linalg.norm(alphabeta[1:]),
             np.max(r_plus_gamma_v_nexts)
         ])
 
@@ -608,7 +656,8 @@ class Controller():
         mkdir(folder_name)
         # save v functions
         for ind, v_function in enumerate(self.v_functions):
-            v_function.target_model.save_weights(folder_name + '/v_function_' + str(ind) + '.hd5')
+            v_function.target_model.save_weights(
+                folder_name + '/v_function_' + str(ind) + '.hd5')
 
         # save the controller's collected data
         data = {
@@ -631,7 +680,7 @@ class Controller():
             assert path.exists(folder_name)
             v_func_paths = [folder_name + '/v_function_' + str(
                 ind
-                ) + '.hd5' for ind in range(len(self.v_functions))]
+            ) + '.hd5' for ind in range(len(self.v_functions))]
             data_dirs = folder_name + '/data.pickle'
             data_inds = range(len(self.v_functions))
         else:
@@ -639,7 +688,7 @@ class Controller():
                 assert path.exists(name)
             v_func_paths = [name + '/v_function_' + str(
                 0
-                ) + '.hd5' for name in folder_name]
+            ) + '.hd5' for name in folder_name]
             data_dirs = [name + '/data.pickle' for name in folder_name]
             data_inds = [0 for name in folder_name]
 
