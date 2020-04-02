@@ -114,7 +114,7 @@ class DnnRegressor2DPlus1D():
         return np.array(self.target_model.predict(x_data))
 
     def visualize(self, goal, state_grid):
-        """utility function to plot the V function no. 'index' under goal 'goal'"""
+        """utility function to plot the V function under goal 'goal'"""
         plt.imshow(
             self.predict(
                 np.concatenate(
