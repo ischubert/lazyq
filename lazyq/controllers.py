@@ -443,7 +443,6 @@ class Controller():
     def get_individual_action(self, rollout_policy_ind, state, goal):
         """get action from policy no. rollout_policy_ind"""
 
-
         k_neighbours_inds = self.rapid_near_neighbours_scale_up(
             rollout_policy_ind,
             state,
@@ -670,7 +669,7 @@ class Controller():
         with open(folder_name + '/data.pickle', 'wb') as file:
             pickle.dump(data, file)
 
-    def load(self, folder_name, light=False):
+    def load(self, folder_name, light=False, only_values=False):
         """
         Load the controller object
         """
@@ -709,6 +708,7 @@ class Controller():
 
         if not light:
             for train_signal in tqdm.tqdm(range(len(self.v_functions))):
-                self.update_k_smallest_inds_and_calculate_pruning(train_signal)
                 self.update_r_plus_gamma_v(train_signal)
-                self.update_targets_only(train_signal)
+                if not only_values:
+                    self.update_k_smallest_inds_and_calculate_pruning(train_signal)
+                    self.update_targets_only(train_signal)
