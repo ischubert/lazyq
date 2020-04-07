@@ -443,8 +443,6 @@ class Controller():
     def get_individual_action(self, rollout_policy_ind, state, goal):
         """get action from policy no. rollout_policy_ind"""
 
-        # update current
-        self.update_r_plus_gamma_v(rollout_policy_ind)
 
         k_neighbours_inds = self.rapid_near_neighbours_scale_up(
             rollout_policy_ind,
