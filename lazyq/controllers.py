@@ -594,7 +594,7 @@ class Controller():
             len(self.next_states_all[train_signal])
         )
 
-    def update(self, train_signal):
+    def update(self, train_signal, intermediate_results_base=None):
         """This function is supposed to be a full from-scratch
         extraction of a value function from a static data set"""
         print('TRAIN_SIGNAL NO.', train_signal)
@@ -620,7 +620,7 @@ class Controller():
         print('Self-consistent V-function iterations...')
         # Start loop with initializing
         target_weights_updated = True
-        for _ in tqdm.tqdm(range(self.n_v_function_update_iterations)):
+        for iteration in tqdm.tqdm(range(self.n_v_function_update_iterations)):
             if target_weights_updated:
                 # If the weights of the target network have been updated,
                 # self.r_plus_gamma_v_all has to be updated as well.
@@ -640,6 +640,10 @@ class Controller():
                 x_values,
                 self.targets_all[train_signal]
             )
+
+            if intermediate_results_base is not None:
+                self.save(intermediate_results_base + '_' + str(iteration))
+
         # Apply pruning mask
 
         print('Prune data set')
@@ -710,5 +714,6 @@ class Controller():
             for train_signal in tqdm.tqdm(range(len(self.v_functions))):
                 self.update_r_plus_gamma_v(train_signal)
                 if not only_values:
-                    self.update_k_smallest_inds_and_calculate_pruning(train_signal)
+                    self.update_k_smallest_inds_and_calculate_pruning(
+                        train_signal)
                     self.update_targets_only(train_signal)
